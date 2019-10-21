@@ -186,7 +186,7 @@ report_new_entry(#exometer_entry{} = E) ->
 
 re_register_entry(Name, Type, Opts) ->
     {Type1, Opts1} = check_type_arg(Type, Opts),
-    case gen_server:call(?MODULE, {new_entry, Name, Type1, Opts1, true}) of
+    case gen_server:call(?MODULE, {new_entry, Name, Type1, Opts1}) of
         {error, Reason} ->
             error(Reason);
         ok ->
@@ -265,8 +265,9 @@ start_link() ->
 init(_) ->
     {ok, #st{}}.
 
-handle_call({new_entry, Name, Type, Opts, AllowExisting} = _Req, _From, S) ->
+handle_call({new_entry, Name, Type, Opts} = _Req, _From, S) ->
     try
+        AllowExisting = proplists:get_value(allow_existing, Opts, false),
         #exometer_entry{options = NewOpts} = E0 =
             lookup_definition(Name, Type, Opts),
 
@@ -274,17 +275,20 @@ handle_call({new_entry, Name, Type, Opts, AllowExisting} = _Req, _From, S) ->
             {true, false} ->
                 {reply, {error, exists}, S};
             _Other ->
-		?log(debug, "_Other = ~p~n", [_Other]),
+		        ?log(debug, "_Other = ~p~n", [_Other]),
                 E1 = process_opts(E0, NewOpts),
-                Res = try  exometer:create_entry(E1),
-			   exometer_report:new_entry(E1)
-		      catch
-			  ?EXCEPTION(error, Error1, Stacktrace1) ->
-			      ?log(debug,
-				"ERROR create_entry(~p) :- ~p~n~p",
-				[E1, Error1, ?GET_STACK(Stacktrace1)]),
-			      erlang:error(Error1)
-		      end,
+                Res = try 
+                    exometer:create_entry(E1),
+			        exometer_report:new_entry(E1)
+		        catch
+			        ?EXCEPTION(error, Error1, Stacktrace1) ->
+			        ?log(
+                        debug,
+				        "ERROR create_entry(~p) :- ~p~n~p",
+				        [E1, Error1, ?GET_STACK(Stacktrace1)]
+                    ),
+			        erlang:error(Error1)
+		        end,
                 {reply, Res, S}
         end
     catch
